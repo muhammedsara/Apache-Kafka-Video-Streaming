@@ -108,19 +108,19 @@ $ wget http://mirror.fibergrid.in/apache/kafka/0.10.0.1/kafka_2.10-0.10.0.1.tgz
 
 ```shell
 $ sudo mkdir /opt/Kafka
-$ cd /opt/Kafka
 ```
 
 > İndirilen arşivi /opt/Kafka dizinindeki tar komutunu kullanarak açın
 
 ```shell
-$ sudo tar -xvf kafka_2.10-0.10.0.1.tgz -C /opt/Kafka/
+$ sudo tar -xvf kafka_2.11-1.0.1.tgz -C /opt/Kafka/
 ```
 
 > Bir sonraki adım Kafka sunucusunu başlatmak,  /opt/Kafka/kafka_2.10-0.10.0.1/bin/ dizininde bulunan kafka-server-start.sh scriptini çalıştırarak başlatabilirsiniz.
 
 ```shell
-$ sudo  /opt/Kafka/kafka_2.10-0.10.0.1/bin/kafka-server-start.sh /opt/Kafka/kafka_2.10-0.10.0.1/config/server.properties
+$ cd /opt/Kafka/kafka_2.11-1.0.1/
+$ sudo  bin/kafka-server-start.sh config/server.properties
 ```
 
 > Sunucu başarıyla başlatılmışsa, aşağıdaki çıktıyı görmelisiniz
@@ -134,13 +134,114 @@ $ sudo  /opt/Kafka/kafka_2.10-0.10.0.1/bin/kafka-server-start.sh /opt/Kafka/kafk
 [2016-08-22 21:43:48,555] INFO New leader is 0 (kafka.server.ZookeeperLeaderElector$LeaderChangeListener)
 ```
 
+> Her şeyin çalışır durumda olduğunu test edin, yeni bir terminal açıp aşağıdaki komutları deneyin
+
+```shell
+$ sudo bin/kafka-topics.sh --create --zookeeper localhost:2181 --replication-factor 1  --partitions 1 --topic testing
+```
+> Aşağıdaki gibi cıktı alınmalıdır
+```shell
+Created topic "testing".
+```
 
 > Kafka sunucusunu arka plan işlemi olarak başlatmak için nohup komut dosyasını komut ile kullanabilirsiniz.
 ```shell
-sudo nohup /opt/Kafka/kafka_2.10-0.10.0.1/bin/kafka-server-start.sh /opt/Kafka/kafka_2.10-0.10.0.1/config/server.properties /tmp/kafka.log 2>&1 &
+$ sudo nohup /opt/Kafka/kafka_2.10-0.10.0.1/bin/kafka-server-start.sh /opt/Kafka/kafka_2.10-0.10.0.1/config/server.properties /tmp/kafka.log 2>&1 &
 ```
 
 > Artık 9092 numaralı bağlantı noktasında çalışan ve dinleyen bir Kafka sunucunuz var.
+
+---
+
+#### Testing Kafka Server
+
+> Öncelikle projemiz için yeni bir dizin oluşturacağız.
+
+```shell
+$ mkdir kafkaDemo 
+$ cd kafkaDemo
+```
+
+> Sanal ortamımızı çalıştırıyoruz.
+```shell
+$ virtualenv env
+$ . env/bin/activate
+```
+ Kafka client çalışır duruma getirmek Kafka-Python projesine ihtiyacımız var.
+
+> Ayrıca, video dağıtımı için OpenCV'a ve “dağıtılmış” Consumer için Flask'a ihtiyacımız olacak.
+```shell
+$ pip install kafka-python opencv-contrib-python Flask
+```
+
+ Son bölümde kurduğumuz Kafka Sunucusu 9092 numaralı portuna bağlı. İki Kafka clientini kurarken bu değeri kullanacağız.
+
+
+
+### Producer
+
+Kafka clientinin ilki, producer mesajı olacaktır. Burada videoyu bir JPEG görüntü akışına dönüştürmek işlemi yapılacaktır. 
+
+```javascript
+// Producer Kodları buraya gelecek !
+
+
+```
+Producer doğrudan bir web kamerasından video akışı yaparak varsayılan ayarlara sahiptir; Bir video dosyasından çekme, stiliniz daha fazlaysa, Producer bir dosya adını komut satırı argümanı olarak kabul eder.
+
+
+### Consumer
+
+Yeni yayınlanan akışımızı okumak için Kafka konusuna erişen bir Consumer'e ihtiyacımız olacak. Mesaj akış sistemimiz dağıtık bir sistem için tasarlandığından, projemizi bu bölüm içinde tutacağız ve Tüketici'yi Flask servisi olarak açacağız.
+
+
+```javascript
+// Consumer Kodları buraya gelecek !
+
+
+```
+
+### Projenin Çalıştırılması
+
+Şimdi her şeyi bir araya getirireceğiz. Sırasıyla, Kafka'yı, Consumer'i ve nihayetinde Prducer'i, her birinin kendi terminalinde başlatlır.
+
+> Kafka' yı başlatcağız
+
+```shell
+$ cd /opt/Kafka/kafka_2.11-1.0.1/
+$ sudo  bin/kafka-server-start.sh config/server.properties
+```
+
+> Yeni bir terminalde sanal ortamını ve Consumer projesini başlatacağız.
+
+
+```shell
+$ cd ~/KafkaDemo
+$ . env/bin/activate
+$ python consumer.py
+```
+
+> Her şey çalışıyorsa terminaliniz okumalısınız
+
+```shell
+* Running on http://0.0.0.0:5000/ (Press CTRL+C to quit)
+```
+
+> Tarayıcıda, http://0.0.0.0:5000/video adresine gidin. Burada henüz bir şey görmeyeceksin, bir kaç adım sonra gelecek
+
+> Consumer için de aynı. İlk önce yeni bir terminal açın. Burada, web kamerasından akış yapacağız, bu nedenle ek argümana gerek yok.
+
+```shell
+$ cd ~/KafkaDemo
+$ . env/bin/activate
+$ python producer.py
+
+```
+
+> Kısa bir video yayınlamak istiyorsak, son komutu aşağıdaki gibi yazabiliriz.
+```shell
+python producer.py videos/my_awesome_video.mp4
+```
 
 
 
