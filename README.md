@@ -93,7 +93,7 @@ tcp6       0      0 :::2181                 :::*                    LISTEN
 ```
 
 
-
+---
 #### Kafka Sunucu Kurulumu ve Başlatma
 
 
