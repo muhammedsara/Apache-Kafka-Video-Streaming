@@ -101,7 +101,7 @@ tcp6       0      0 :::2181                 :::*                    LISTEN
 > Artık Java ve ZooKeeper yüklendiğine göre, Kafka'yı Apache web sitesinden indirip çıkarmanın zamanı geldi. Kafka'yı indirmek için wget kullanabilirsiniz.
 
 ```shell
-$ wget http://mirror.fibergrid.in/apache/kafka/0.10.0.1/kafka_2.10-0.10.0.1.tgz
+$ wget http://ftp.itu.edu.tr/Mirror/Apache/kafka/2.1.0/kafka_2.11-2.1.0.tgz
 ```
 
 > Ardından, Kafka kurulumu için bir dizin oluşturun
@@ -113,13 +113,13 @@ $ sudo mkdir /opt/Kafka
 > İndirilen arşivi /opt/Kafka dizinindeki tar komutunu kullanarak açın
 
 ```shell
-$ sudo tar -xvf kafka_2.11-1.0.1.tgz -C /opt/Kafka/
+$ sudo tar -xvf kafka_2.11-2.1.0.tgz -C /opt/Kafka/
 ```
 
 > Bir sonraki adım Kafka sunucusunu başlatmak,  /opt/Kafka/kafka_2.10-0.10.0.1/bin/ dizininde bulunan kafka-server-start.sh scriptini çalıştırarak başlatabilirsiniz.
 
 ```shell
-$ cd /opt/Kafka/kafka_2.11-1.0.1/
+$ cd /opt/Kafka/kafka_2.11-2.1.0/
 $ sudo  bin/kafka-server-start.sh config/server.properties
 ```
 
@@ -146,7 +146,7 @@ Created topic "testing".
 
 > Kafka sunucusunu arka plan işlemi olarak başlatmak için nohup komut dosyasını komut ile kullanabilirsiniz.
 ```shell
-$ sudo nohup /opt/Kafka/kafka_2.10-0.10.0.1/bin/kafka-server-start.sh /opt/Kafka/kafka_2.10-0.10.0.1/config/server.properties /tmp/kafka.log 2>&1 &
+$ sudo nohup /opt/Kafka/kafka_2.10-0.10.0.1/bin/kafka-server-start.sh /opt/Kafka/kafka_2.11-2.1.0/config/server.properties /tmp/kafka.log 2>&1 &
 ```
 
 > Artık 9092 numaralı bağlantı noktasında çalışan ve dinleyen bir Kafka sunucunuz var.
@@ -329,7 +329,7 @@ if __name__ == "__main__":
 > Kafka' yı başlatcağız
 
 ```shell
-$ cd /opt/Kafka/kafka_2.11-1.0.1/
+$ cd /opt/Kafka/kafka_2.11-2.1.0/
 $ sudo  bin/kafka-server-start.sh config/server.properties
 ```
 
