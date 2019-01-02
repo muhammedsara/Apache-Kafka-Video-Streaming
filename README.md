@@ -152,8 +152,126 @@ $ sudo nohup /opt/Kafka/kafka_2.10-0.10.0.1/bin/kafka-server-start.sh /opt/Kafka
 > Artık 9092 numaralı bağlantı noktasında çalışan ve dinleyen bir Kafka sunucunuz var.
 
 ---
+## Streams API example: WordCount
+> prepare topics
+```shell
+> bin/kafka-topics.sh --create \
+    --zookeeper localhost:2181 \
+    --replication-factor 1 \
+    --partitions 1 \
+    --topic streams-plaintext-input
+Created topic "streams-plaintext-input".
+```
+```shell
+> bin/kafka-topics.sh --create \
+    --zookeeper localhost:2181 \
+    --replication-factor 1 \
+    --partitions 1 \
+    --topic streams-wordcount-output \
+    --config cleanup.policy=compact
+Created topic "streams-wordcount-output".
+```
+> create a project with maven
+```shell
+mvn archetype:generate \
+    -DarchetypeGroupId=org.apache.kafka \
+    -DarchetypeArtifactId=streams-quickstart-java \
+    -DarchetypeVersion=2.1.0 \
+    -DgroupId=streams.examples \
+    -DartifactId=streams.examples \
+    -Dversion=0.1 \
+    -Dpackage=myapps
+```
+> content of `WordCount.java`
+```java
+package myapps;
 
-#### Testing Kafka Server
+import org.apache.kafka.common.serialization.Serdes;
+import org.apache.kafka.common.utils.Bytes;
+import org.apache.kafka.streams.KafkaStreams;
+import org.apache.kafka.streams.StreamsBuilder;
+import org.apache.kafka.streams.StreamsConfig;
+import org.apache.kafka.streams.Topology;
+import org.apache.kafka.streams.kstream.KeyValueMapper;
+import org.apache.kafka.streams.kstream.Materialized;
+import org.apache.kafka.streams.kstream.Produced;
+import org.apache.kafka.streams.kstream.ValueMapper;
+import org.apache.kafka.streams.state.KeyValueStore;
+
+import java.util.Arrays;
+import java.util.Locale;
+import java.util.Properties;
+import java.util.concurrent.CountDownLatch;
+
+/**
+ * In this example, we implement a simple WordCount program using the high-level Streams DSL
+ * that reads from a source topic "streams-plaintext-input", where the values of messages represent lines of text,
+ * split each text line into words and then compute the word occurence histogram, write the continuous updated histogram
+ * into a topic "streams-wordcount-output" where each record is an updated count of a single word.
+ */
+public class WordCount {
+
+    public static void main(String[] args) throws Exception {
+        Properties props = new Properties();
+        props.put(StreamsConfig.APPLICATION_ID_CONFIG, "streams-wordcount");
+        props.put(StreamsConfig.BOOTSTRAP_SERVERS_CONFIG, "localhost:9092");
+        props.put(StreamsConfig.DEFAULT_KEY_SERDE_CLASS_CONFIG, Serdes.String().getClass());
+        props.put(StreamsConfig.DEFAULT_VALUE_SERDE_CLASS_CONFIG, Serdes.String().getClass());
+
+        final StreamsBuilder builder = new StreamsBuilder();
+
+        builder.<String, String>stream("streams-plaintext-input")
+               .flatMapValues(value -> Arrays.asList(value.toLowerCase(Locale.getDefault()).split("\\W+")))
+               .groupBy((key, value) -> value)
+               .count(Materialized.<String, Long, KeyValueStore<Bytes, byte[]>>as("counts-store"))
+               .toStream()
+               .to("streams-wordcount-output", Produced.with(Serdes.String(), Serdes.Long()));
+
+        final Topology topology = builder.build();
+        final KafkaStreams streams = new KafkaStreams(topology, props);
+        final CountDownLatch latch = new CountDownLatch(1);
+
+        // attach shutdown handler to catch control-c
+        Runtime.getRuntime().addShutdownHook(new Thread("streams-shutdown-hook") {
+            @Override
+            public void run() {
+                streams.close();
+                latch.countDown();
+            }
+        });
+
+        try {
+            streams.start();
+            latch.await();
+        } catch (Throwable e) {
+            System.exit(1);
+        }
+        System.exit(0);
+    }
+}
+```
+> build and run
+```shell
+cd streams.examples/
+mvn clean package
+mvn exec:java -Dexec.mainClass=myapps.WordCount
+```
+> run producer
+```shell
+> bin/kafka-console-producer.sh --broker-list localhost:9092 --topic streams-plaintext-input
+```
+> run consumer
+```shell
+> bin/kafka-console-consumer.sh --bootstrap-server localhost:9092 \
+    --topic streams-wordcount-output \
+    --from-beginning \
+    --formatter kafka.tools.DefaultMessageFormatter \
+    --property print.key=true \
+    --property print.value=true \
+    --property key.deserializer=org.apache.kafka.common.serialization.StringDeserializer \
+    --property value.deserializer=org.apache.kafka.common.serialization.LongDeserializer
+```
+## Our project
 
 > Öncelikle projemiz için yeni bir dizin oluşturacağız.
 
@@ -182,7 +300,7 @@ $ pip install kafka-python opencv-contrib-python Flask
 
 Kafka clientinin ilki, producer mesajı olacaktır. Burada videoyu bir JPEG görüntü akışına dönüştürmek işlemi yapılacaktır. 
 
-```javascript
+```python
 import sys
 import time
 import cv2
@@ -272,7 +390,7 @@ Producer doğrudan bir web kamerasından video akışı yaparak varsayılan ayar
 Yeni yayınlanan akışımızı okumak için Kafka konusuna erişen bir Consumer'e ihtiyacımız olacak. Mesaj akış sistemimiz dağıtık bir sistem için tasarlandığından, projemizi bu bölüm içinde tutacağız ve Tüketici'yi Flask servisi olarak açacağız.
 
 
-```javascript
+```python
 import os
 import time
 #import datetime
