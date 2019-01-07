@@ -101,7 +101,7 @@ tcp6       0      0 :::2181                 :::*                    LISTEN
 > Artık Java ve ZooKeeper yüklendiğine göre, Kafka'yı Apache web sitesinden indirip çıkarmanın zamanı geldi. Kafka'yı indirmek için wget kullanabilirsiniz.
 
 ```shell
-$ wget http://mirror.fibergrid.in/apache/kafka/0.10.0.1/kafka_2.10-0.10.0.1.tgz
+$ wget http://ftp.itu.edu.tr/Mirror/Apache/kafka/2.1.0/kafka_2.11-2.1.0.tgz
 ```
 
 > Ardından, Kafka kurulumu için bir dizin oluşturun
@@ -113,13 +113,13 @@ $ sudo mkdir /opt/Kafka
 > İndirilen arşivi /opt/Kafka dizinindeki tar komutunu kullanarak açın
 
 ```shell
-$ sudo tar -xvf kafka_2.11-1.0.1.tgz -C /opt/Kafka/
+$ sudo tar -xvf kafka_2.11-2.1.0.tgz -C /opt/Kafka/
 ```
 
 > Bir sonraki adım Kafka sunucusunu başlatmak,  /opt/Kafka/kafka_2.10-0.10.0.1/bin/ dizininde bulunan kafka-server-start.sh scriptini çalıştırarak başlatabilirsiniz.
 
 ```shell
-$ cd /opt/Kafka/kafka_2.11-1.0.1/
+$ cd /opt/Kafka/kafka_2.11-2.1.0/
 $ sudo  bin/kafka-server-start.sh config/server.properties
 ```
 
@@ -146,14 +146,132 @@ Created topic "testing".
 
 > Kafka sunucusunu arka plan işlemi olarak başlatmak için nohup komut dosyasını komut ile kullanabilirsiniz.
 ```shell
-$ sudo nohup /opt/Kafka/kafka_2.10-0.10.0.1/bin/kafka-server-start.sh /opt/Kafka/kafka_2.10-0.10.0.1/config/server.properties /tmp/kafka.log 2>&1 &
+$ sudo nohup /opt/Kafka/kafka_2.10-0.10.0.1/bin/kafka-server-start.sh /opt/Kafka/kafka_2.11-2.1.0/config/server.properties /tmp/kafka.log 2>&1 &
 ```
 
 > Artık 9092 numaralı bağlantı noktasında çalışan ve dinleyen bir Kafka sunucunuz var.
 
 ---
+## Streams API example: WordCount
+> prepare topics
+```shell
+> bin/kafka-topics.sh --create \
+    --zookeeper localhost:2181 \
+    --replication-factor 1 \
+    --partitions 1 \
+    --topic streams-plaintext-input
+Created topic "streams-plaintext-input".
+```
+```shell
+> bin/kafka-topics.sh --create \
+    --zookeeper localhost:2181 \
+    --replication-factor 1 \
+    --partitions 1 \
+    --topic streams-wordcount-output \
+    --config cleanup.policy=compact
+Created topic "streams-wordcount-output".
+```
+> create a project with maven
+```shell
+mvn archetype:generate \
+    -DarchetypeGroupId=org.apache.kafka \
+    -DarchetypeArtifactId=streams-quickstart-java \
+    -DarchetypeVersion=2.1.0 \
+    -DgroupId=streams.examples \
+    -DartifactId=streams.examples \
+    -Dversion=0.1 \
+    -Dpackage=myapps
+```
+> content of `WordCount.java`
+```java
+package myapps;
 
-#### Testing Kafka Server
+import org.apache.kafka.common.serialization.Serdes;
+import org.apache.kafka.common.utils.Bytes;
+import org.apache.kafka.streams.KafkaStreams;
+import org.apache.kafka.streams.StreamsBuilder;
+import org.apache.kafka.streams.StreamsConfig;
+import org.apache.kafka.streams.Topology;
+import org.apache.kafka.streams.kstream.KeyValueMapper;
+import org.apache.kafka.streams.kstream.Materialized;
+import org.apache.kafka.streams.kstream.Produced;
+import org.apache.kafka.streams.kstream.ValueMapper;
+import org.apache.kafka.streams.state.KeyValueStore;
+
+import java.util.Arrays;
+import java.util.Locale;
+import java.util.Properties;
+import java.util.concurrent.CountDownLatch;
+
+/**
+ * In this example, we implement a simple WordCount program using the high-level Streams DSL
+ * that reads from a source topic "streams-plaintext-input", where the values of messages represent lines of text,
+ * split each text line into words and then compute the word occurence histogram, write the continuous updated histogram
+ * into a topic "streams-wordcount-output" where each record is an updated count of a single word.
+ */
+public class WordCount {
+
+    public static void main(String[] args) throws Exception {
+        Properties props = new Properties();
+        props.put(StreamsConfig.APPLICATION_ID_CONFIG, "streams-wordcount");
+        props.put(StreamsConfig.BOOTSTRAP_SERVERS_CONFIG, "localhost:9092");
+        props.put(StreamsConfig.DEFAULT_KEY_SERDE_CLASS_CONFIG, Serdes.String().getClass());
+        props.put(StreamsConfig.DEFAULT_VALUE_SERDE_CLASS_CONFIG, Serdes.String().getClass());
+
+        final StreamsBuilder builder = new StreamsBuilder();
+
+        builder.<String, String>stream("streams-plaintext-input")
+               .flatMapValues(value -> Arrays.asList(value.toLowerCase(Locale.getDefault()).split("\\W+")))
+               .groupBy((key, value) -> value)
+               .count(Materialized.<String, Long, KeyValueStore<Bytes, byte[]>>as("counts-store"))
+               .toStream()
+               .to("streams-wordcount-output", Produced.with(Serdes.String(), Serdes.Long()));
+
+        final Topology topology = builder.build();
+        final KafkaStreams streams = new KafkaStreams(topology, props);
+        final CountDownLatch latch = new CountDownLatch(1);
+
+        // attach shutdown handler to catch control-c
+        Runtime.getRuntime().addShutdownHook(new Thread("streams-shutdown-hook") {
+            @Override
+            public void run() {
+                streams.close();
+                latch.countDown();
+            }
+        });
+
+        try {
+            streams.start();
+            latch.await();
+        } catch (Throwable e) {
+            System.exit(1);
+        }
+        System.exit(0);
+    }
+}
+```
+> build and run
+```shell
+cd streams.examples/
+mvn clean package
+mvn exec:java -Dexec.mainClass=myapps.WordCount
+```
+> run producer
+```shell
+> bin/kafka-console-producer.sh --broker-list localhost:9092 --topic streams-plaintext-input
+```
+> run consumer
+```shell
+> bin/kafka-console-consumer.sh --bootstrap-server localhost:9092 \
+    --topic streams-wordcount-output \
+    --from-beginning \
+    --formatter kafka.tools.DefaultMessageFormatter \
+    --property print.key=true \
+    --property print.value=true \
+    --property key.deserializer=org.apache.kafka.common.serialization.StringDeserializer \
+    --property value.deserializer=org.apache.kafka.common.serialization.LongDeserializer
+```
+## Our project
 
 > Öncelikle projemiz için yeni bir dizin oluşturacağız.
 
@@ -182,10 +300,87 @@ $ pip install kafka-python opencv-contrib-python Flask
 
 Kafka clientinin ilki, producer mesajı olacaktır. Burada videoyu bir JPEG görüntü akışına dönüştürmek işlemi yapılacaktır. 
 
-```javascript
-// Producer Kodları buraya gelecek !
+```python
+import sys
+import time
+import cv2
+from kafka import KafkaProducer
+
+servers=['localhost:9092']
+
+def publish_video(video_file):
+    """
+    Publish given video file to a specified Kafka topic. 
+    Kafka Server is expected to be running on the localhost. Not partitioned.
+    
+    :param video_file: path to video file <string>
+    """
+    # Start up producer
+    producer = KafkaProducer(bootstrap_servers=servers)
+
+    # Open file
+    video = cv2.VideoCapture(video_file)
+    
+    print('publishing video...')
+
+    while(video.isOpened()):
+        success, frame = video.read()
+
+        # Ensure file was read successfully
+        if not success:
+            print("bad read!")
+            break
+        
+        # Convert image to png
+        ret, buffer = cv2.imencode('.jpg', frame)
+
+        # Convert to bytes and send to kafka
+        producer.send("video", buffer.tobytes())
+
+        time.sleep(0.04)
+    video.release()
+    print('publish complete')
+
+def publish_camera():
+    """
+    Publish camera video stream to specified Kafka topic.
+    Kafka Server is expected to be running on the localhost. Not partitioned.
+    """
+
+    # Start up producer
+    producer = KafkaProducer(bootstrap_servers=servers)
+
+    
+    camera = cv2.VideoCapture(0)
+    try:
+        while(True):
+            success, frame = camera.read()
+        
+            ret, buffer = cv2.imencode('.jpg', frame)
+            producer.send("webcam", buffer.tobytes())
+            
+            # Choppier stream, reduced load on processor
+            time.sleep(0.2)
+
+    except:
+        print("\nExiting.")
+        sys.exit(1)
+
+    
+    camera.release()
 
 
+if __name__ == '__main__':
+    """
+    Producer will publish to Kafka Server a video file given as a system arg. 
+    Otherwise it will default by streaming webcam feed.
+    """
+    if(len(sys.argv) > 1):
+        video_path = sys.argv[1]
+        publish_video(video_path)
+    else:
+        print("publishing feed!")
+        publish_camera()
 ```
 Producer doğrudan bir web kamerasından video akışı yaparak varsayılan ayarlara sahiptir; Bir video dosyasından çekme, stiliniz daha fazlaysa, Producer bir dosya adını komut satırı argümanı olarak kabul eder.
 
@@ -195,8 +390,83 @@ Producer doğrudan bir web kamerasından video akışı yaparak varsayılan ayar
 Yeni yayınlanan akışımızı okumak için Kafka konusuna erişen bir Consumer'e ihtiyacımız olacak. Mesaj akış sistemimiz dağıtık bir sistem için tasarlandığından, projemizi bu bölüm içinde tutacağız ve Tüketici'yi Flask servisi olarak açacağız.
 
 
-```javascript
-// Consumer Kodları buraya gelecek !
+```python
+import os
+import time
+#import datetime
+from threading import Thread
+from flask import Flask, Response, render_template
+from kafka import KafkaConsumer
+
+# Fire up the Kafka Consumer
+topics = ["webcam", "video"]
+servers=['localhost:9092']
+consumers = []
+buffer = []
+for topic in topics:
+    consumers.append(KafkaConsumer(topic, bootstrap_servers=servers))
+    # Frame Buffer
+    buffer.append(b'')
+
+# Set the consumer in a Flask App
+app = Flask(__name__)
+
+@app.route('/')
+def index():
+    return render_template('index.html')
+
+@app.route('/webcam')
+def webcam():
+    return render_template('webcam.html')
+
+@app.route('/video')
+def video():
+    return render_template('video.html')
+
+@app.route('/webcam_feed', methods=['GET'])
+def webcam_feed():
+    return Response(get_video_stream(topic = 0),
+               mimetype='multipart/x-mixed-replace; boundary=frame')
+
+@app.route('/video_feed', methods=['GET'])
+def video_feed():
+    """
+    This is the heart of our video display. Notice we set the mimetype to 
+    multipart/x-mixed-replace. This tells Flask to replace any old images with 
+    new values streaming through the pipeline.
+    """
+
+    return Response(get_video_stream(topic = 1), 
+               mimetype='multipart/x-mixed-replace; boundary=frame')
+
+def get_video_stream(topic):
+    """
+    Here is where we recieve streamed images from the Kafka Server and convert 
+    them to a Flask-readable format.
+    """
+
+    while True:
+        time.sleep(0.04) #0.2=5fps, 0.04=25fps
+        yield (b'--frame\r\n'
+               b'Content-Type: image/jpg\r\n\r\n' + buffer[topic] + b'\r\n\r\n')
+
+def consumer_thread(topic, delay = 3):
+    global topics
+    global buffer
+    index = topics.index(topic)
+    while True:
+        for msg in consumers[index]:
+            buffer[index] = msg.value
+        time.sleep(delay)
+
+if __name__ == "__main__":
+    threads = []
+    for topic in topics:
+        threads.append(Thread(target=consumer_thread,args=(topic,)))
+    for t in threads:
+        t.start()
+    PORT = int(os.environ.get("PORT", 5000))
+    app.run(host='0.0.0.0', port=PORT, debug=True)
 
 
 ```
@@ -208,7 +478,7 @@ Yeni yayınlanan akışımızı okumak için Kafka konusuna erişen bir Consumer
 > Kafka' yı başlatcağız
 
 ```shell
-$ cd /opt/Kafka/kafka_2.11-1.0.1/
+$ cd /opt/Kafka/kafka_2.11-2.1.0/
 $ sudo  bin/kafka-server-start.sh config/server.properties
 ```
 
@@ -240,9 +510,8 @@ $ python producer.py
 
 > Kısa bir video yayınlamak istiyorsak, son komutu aşağıdaki gibi yazabiliriz.
 ```shell
-python producer.py videos/my_awesome_video.mp4
+python producer.py videos/Countdown1.mp4
 ```
-
 
 
 
